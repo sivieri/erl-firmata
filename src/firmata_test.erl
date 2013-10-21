@@ -1,8 +1,9 @@
 -module(firmata_test).
--export([pull_test/1, push_test/1]).
+-export([pull_test/1, push_test/1, push_performance/1]).
 -define(SLEEP, 1000).
 -define(LED, 13).
 -define(SENSOR, 0).
+-define(SAMPLING, 10000000).
 
 % Public API
 
@@ -15,6 +16,12 @@ push_test(Device) ->
     Pid = spawn(fun() -> push_loop_notifications() end),
     firmata:subscribe(Pid, analog, ?SENSOR),
     push_loop_led(high).
+
+push_performance(Device) ->
+    firmata:start_link(Device),
+    firmata:subscribe(self(), analog, ?SENSOR),
+    {_, Secs, MicroSecs} = erlang:now(),
+    push_loop_performance(0, Secs * 1000000 + MicroSecs).
 
 % Private API
 
@@ -45,3 +52,16 @@ push_loop_led(Status) ->
     end,
     timer:sleep(?SLEEP),
     push_loop_led(NewStatus).
+
+push_loop_performance(Counter, Initial) ->
+    {_, Secs, MicroSecs} = erlang:now(),
+    case (Secs * 1000000 + MicroSecs - Initial) > ?SAMPLING of
+        false ->
+            receive
+                {update, ?SENSOR, _Value} ->
+                    push_loop_performance(Counter + 1, Initial)
+            end;
+        true ->
+            Time = Secs * 1000000 + MicroSecs - Initial,
+            io:format("Received ~p messages in ~p microsecs: ~p msg per sec~n", [Counter, Time, Counter / (Time / 1000000)])
+    end.
