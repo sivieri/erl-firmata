@@ -1,18 +1,24 @@
 -module(firmata_test).
--export([test/1]).
+-export([pull_test/1, push_test/1]).
 -define(SLEEP, 1000).
 -define(LED, 13).
 -define(SENSOR, 0).
 
 % Public API
 
-test(Device) ->
+pull_test(Device) ->
     firmata:start_link(Device),
-    loop(high).
+    pull_loop(high).
+
+push_test(Device) ->
+    firmata:start_link(Device),
+    Pid = spawn(fun() -> push_loop_notifications() end),
+    firmata:subscribe(Pid, analog, ?SENSOR),
+    push_loop_led(high).
 
 % Private API
 
-loop(Status) ->
+pull_loop(Status) ->
     firmata:digital_write(?LED, Status),
     NewStatus = case Status of
         high -> low;
@@ -20,4 +26,22 @@ loop(Status) ->
     end,
     io:format("LED changed~n~p~n", [firmata:analog_read(?SENSOR)]),
     timer:sleep(?SLEEP),
-    loop(NewStatus).
+    pull_loop(NewStatus).
+
+push_loop_notifications() ->
+    receive
+        {update, ?SENSOR, Value} ->
+            io:format("Sensor update: ~p~n", [Value]);
+        Any ->
+            io:format("Unknown message ~p~n", [Any])
+    end,
+    push_loop_notifications().
+
+push_loop_led(Status) ->
+    firmata:digital_write(?LED, Status),
+    NewStatus = case Status of
+        high -> low;
+        low -> high
+    end,
+    timer:sleep(?SLEEP),
+    push_loop_led(NewStatus).
