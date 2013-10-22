@@ -106,10 +106,8 @@ handle_cast(Msg, State) ->
     {noreply, State}.
 
 handle_info({data, NewBytes}, State = #state{analog = Analog, digital = Digital, bytes = Bytes}) when byte_size(NewBytes) + byte_size(Bytes)  >= 3 ->
-    Parsed = binary:part(<<Bytes/binary, NewBytes/binary>>, 0, (byte_size(NewBytes) + byte_size(Bytes)) div 3 * 3),
-    Rest = binary:part(<<Bytes/binary, NewBytes/binary>>, byte_size(NewBytes) + byte_size(Bytes), -((byte_size(NewBytes) + byte_size(Bytes)) rem 3)),
-    {NewAnalog, NewDigital} = filter_msg(Parsed, Analog, Digital),
-    {noreply, State#state{analog = NewAnalog, digital = NewDigital, bytes = Rest}};
+    {NewAnalog, NewDigital} = filter_msg(<<Bytes/binary, NewBytes/binary>>, Analog, Digital),
+    {noreply, State#state{analog = NewAnalog, digital = NewDigital, bytes = <<>>}};
 handle_info({data, NewBytes}, State) ->
     {noreply, State#state{bytes = NewBytes}};
 handle_info(Info, State) ->
@@ -124,17 +122,16 @@ code_change(_OldVsn, State, _Extra) ->
 
 % Private API
 
+% This may lose a partial initial or final packet in the byte stream,
+% but we have 50+ updates per second, so we don't really care
 filter_msg(<<>>, Analog, Digital) ->
     {Analog, Digital};
-filter_msg(<<B1:8/integer, B2:8/integer, B3:8/integer, Rest/binary>>, Analog, Digital) ->
-    Cmd = B1 band 240,
-    Ch = B1 band 15,
-    {NewAnalog, NewDigital, Continuation} = case Cmd of
-        224 -> {parse_msg(Ch, B2, B3, Analog), Digital, Rest};
-        144 -> {Analog, parse_msg(Ch, B2, B3, Digital), Rest};
-        _ -> {Analog, Digital, <<B2:8/integer, B3:8/integer, Rest/binary>>}
-    end,
-    filter_msg(Continuation, NewAnalog, NewDigital).
+filter_msg(<<9:4, Ch:4, Lsb:8, Msb:8, Rest/binary>>, Analog, Digital) ->
+    filter_msg(Rest, Analog, parse_msg(Ch, Lsb, Msb, Digital));
+filter_msg(<<14:4, Ch:4, Lsb:8, Msb:8, Rest/binary>>, Analog, Digital) ->
+    filter_msg(Rest, parse_msg(Ch, Lsb, Msb, Analog), Digital);
+filter_msg(<<_:8, Rest/binary>>, Analog, Digital) ->
+    filter_msg(Rest, Analog, Digital).
 
 parse_msg(Ch, Lsb, Msb, Dict) ->
     {_, Subscribers} = dict:fetch(Ch, Dict),
