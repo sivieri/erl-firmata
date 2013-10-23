@@ -127,15 +127,21 @@ code_change(_OldVsn, State, _Extra) ->
 
 read_loop(Bytes) when byte_size(Bytes) < ?ACC ->
     case rs232:read(?READ_LENGTH, ?READ_TIMEOUT) of
-        {Error, [Byte]} when Error == 0 -> % Everything is fine
+        % Everything is fine
+        {Error, [Byte]} when Error == 0 ->
             read_loop(<<Bytes/binary, Byte:8>>);
-        {Error, _} when Error == 9 -> % Timeout: we shouldn't worry too much
+         % Timeout: we shouldn't worry too much
+        {Error, _} when Error == 9 ->
             read_loop(Bytes);
-        {Error, _} -> % Worry
+        % Worry
+        {Error, _} ->
             io:format(standard_error, "Error while reading: ~w~n", [Error])
     end;
 read_loop(Bytes) ->
     ?MODULE ! {data, Bytes},
+    % We need to sleep a little bit, otherwhise the VM cannot
+    % switch task (on single core devices)!
+    timer:sleep(?READ_TIMEOUT),
     read_loop(<<>>).
 
 filter_msg(<<>>, Analog, Digital) ->
