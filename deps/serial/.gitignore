@@ -1,3 +1,0 @@
-ebin/*.beam
-priv/bin/serial
-c_src/*.o
