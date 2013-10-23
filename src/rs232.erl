@@ -1,5 +1,5 @@
 -module(rs232).
--export([init/0, open/1, close/0, read/1, write/1]).
+-export([init/0, open/2, close/0, read/2, write/1]).
 -on_load(init/0).
 
 -define(APPNAME, firmata).
@@ -13,13 +13,13 @@ init() ->
             erlang:load_nif(filename:join([PrivDir, "rs232"]), 0)
     end.
 
-open(_Device) ->
+open(_Device, _Speed) ->
     erlang:nif_error(nif_not_loaded).
 
 close() ->
     erlang:nif_error(nif_not_loaded).
 
-read(_Length) ->
+read(_Length, _Timeout) ->
     erlang:nif_error(nif_not_loaded).
 
 write(_Buffer) ->

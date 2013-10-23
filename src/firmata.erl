@@ -3,13 +3,15 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 -export([start_link/1, digital_read/1, analog_read/1, pin_mode/2, digital_write/2, analog_write/2, subscribe/3, unsubscribe/3]).
 -define(SPEED, 57600).
+-define(ACC, 100).
+-define(READ_LENGTH, 1).
+-define(READ_TIMEOUT, 10).
 -type dict(Key, Val) :: [{Key, Val}].
 -type set(Val) :: [Val].
--record(state, {device                  :: pid(),
-                         analog                 :: dict(integer(), {integer(), set(pid())}),
-                         digital                  :: dict(integer(), {integer(), set(pid())}),
-                         output                 :: dict(integer(), integer()),
-                         bytes = <<>>   :: binary()}).
+-record(state, {analog          :: dict(integer(), {integer(), set(pid())}),
+                digital         :: dict(integer(), {integer(), set(pid())}),
+                output          :: dict(integer(), integer()),
+                bytes = <<>>    :: binary()}).
 
 % Public API
 
@@ -46,11 +48,12 @@ unsubscribe(Pid, digital, Pin) ->
     gen_server:cast(?MODULE, {unsub, Pid, digital, Pin}).
 
 init([Device]) ->
-    SerialPort = serial:start([{speed, ?SPEED}, {open, Device}]),
+    rs232:open(Device, ?SPEED),
     Analog = lists:foldl(fun(I, AccIn) -> dict:store(I, {0, sets:new()}, AccIn) end, dict:new(), lists:seq(0, 15)),
     Digital = lists:foldl(fun(I, AccIn) -> dict:store(I, {0, sets:new()}, AccIn) end, dict:new(), lists:seq(0, 15)),
     Output = lists:foldl(fun(I, AccIn) -> dict:store(I, 0, AccIn) end, dict:new(), lists:seq(0, 15)),
-    {ok, #state{device = SerialPort, analog = Analog, digital = Digital, output = Output}}.
+    spawn_link(fun() -> read_loop(<<>>) end),
+    {ok, #state{analog = Analog, digital = Digital, output = Output}}.
 
 handle_call({digital, read, Pin}, _From, State = #state{digital = Digital}) ->
     {Reply, _} = dict:fetch(Pin, Digital),
@@ -63,10 +66,10 @@ handle_call(Request, _From, State) ->
     io:format(standard_error, "Unknown CALL message ~p~n", [Request]),
     {reply, Reply, State}.
 
-handle_cast({mode, Pin, Mode}, State = #state{device = Device}) ->
-    Device ! {send, <<244:8/integer, Pin:8/integer, Mode:8/integer>>},
+handle_cast({mode, Pin, Mode}, State) ->
+    rs232:write(<<244:8/integer, Pin:8/integer, Mode:8/integer>>),
     {noreply, State};
-handle_cast({digital, write, Pin, Value}, State = #state{device = Device, output = Output}) ->
+handle_cast({digital, write, Pin, Value}, State = #state{output = Output}) ->
     PortNumber = (Pin bsr 3) band 15,
     Current = dict:fetch(PortNumber, Output),
     NewCurrent = case Value of
@@ -80,14 +83,14 @@ handle_cast({digital, write, Pin, Value}, State = #state{device = Device, output
     First = NewCurrent band 127,
     Second = NewCurrent bsr 7,
     Msg = <<Cmd:8/integer, First:8/integer, Second:8/integer>>,
-    Device ! {send, Msg},
+    rs232:write(Msg),
     {noreply, State#state{output = NewOutput}};
-handle_cast({analog, write, Pin, Value}, State = #state{device = Device}) ->
+handle_cast({analog, write, Pin, Value}, State) ->
     Cmd = 224 bor (Pin band 15),
     First = Value band 127,
     Second = Value bsr 7,
     Msg = <<Cmd:8/integer, First:8/integer, Second:8/integer>>,
-    Device ! {send, Msg},
+    rs232:write(Msg),
     {noreply, State};
 handle_cast({sub, Pid, analog, Pin}, State = #state{analog = Analog}) ->
     NewAnalog = add_subscriber(Pid, Pin, Analog),
@@ -122,8 +125,19 @@ code_change(_OldVsn, State, _Extra) ->
 
 % Private API
 
-% This may lose a partial initial or final packet in the byte stream,
-% but we have 50+ updates per second, so we don't really care
+read_loop(Bytes) when byte_size(Bytes) < ?ACC ->
+    case rs232:read(?READ_LENGTH, ?READ_TIMEOUT) of
+        {Error, [Byte]} when Error == 0 -> % Everything is fine
+            read_loop(<<Bytes/binary, Byte:8>>);
+        {Error, _} when Error == 9 -> % Timeout: we shouldn't worry too much
+            read_loop(Bytes);
+        {Error, _} -> % Worry
+            io:format(standard_error, "Error while reading: ~w~n", [Error])
+    end;
+read_loop(Bytes) ->
+    ?MODULE ! {data, Bytes},
+    read_loop(<<>>).
+
 filter_msg(<<>>, Analog, Digital) ->
     {Analog, Digital};
 filter_msg(<<9:4, Ch:4, Lsb:8, Msb:8, Rest/binary>>, Analog, Digital) ->

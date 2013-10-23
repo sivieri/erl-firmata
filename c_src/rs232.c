@@ -4,9 +4,11 @@
 #include <unistd.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 typedef struct {
   ErlNifEnv *env;
+  int speed;
   struct rs232_port_t *serial;
 } state_t;
 
@@ -14,15 +16,49 @@ extern int errno;
 
 static state_t state;
 
-static ERL_NIF_TERM open_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
-    int error;
+static ERL_NIF_TERM open_2(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
+    int error, local_speed;
     char device[RS232_STRLEN_DEVICE];
 
-    if (argc != 1 || !enif_is_list(env, argv[0])) {
+    if (argc != 2 || !enif_is_list(env, argv[0]) || !enif_is_number(env, argv[1])) {
         return enif_make_badarg(env);
     }
     if (!enif_get_string(env, argv[0], device, RS232_STRLEN_DEVICE, ERL_NIF_LATIN1)) {
         return enif_make_badarg(env);
+    }
+    if (!enif_get_int(env, argv[1], &local_speed)) {
+    	return enif_make_badarg(env);
+    }
+    switch (local_speed) {
+    	case 300:
+    		state.speed = RS232_BAUD_300;
+    		break;
+    	case 2400:
+			state.speed = RS232_BAUD_2400;
+			break;
+    	case 4800:
+			state.speed = RS232_BAUD_4800;
+			break;
+    	case 9600:
+			state.speed = RS232_BAUD_9600;
+			break;
+    	case 19200:
+			state.speed = RS232_BAUD_19200;
+			break;
+    	case 38400:
+			state.speed = RS232_BAUD_38400;
+			break;
+    	case 57600:
+			state.speed = RS232_BAUD_57600;
+			break;
+    	case 115200:
+			state.speed = RS232_BAUD_115200;
+			break;
+    	case 460800:
+			state.speed = RS232_BAUD_460800;
+			break;
+    	default:
+    		return enif_make_badarg(env);
     }
     if (state.serial != NULL && rs232_port_open(state.serial)) {
         return enif_make_tuple2(env, enif_make_atom(env, "error"), enif_make_string(env, "serial port already opened", ERL_NIF_LATIN1));
@@ -34,7 +70,7 @@ static ERL_NIF_TERM open_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) 
     if (error > RS232_ERR_NOERROR) {
         return enif_make_tuple2(env, enif_make_atom(env, "error"), enif_make_int(env, error));
     }
-    rs232_set_baud(state.serial, RS232_BAUD_57600);
+    rs232_set_baud(state.serial, state.speed);
     rs232_set_data(state.serial, RS232_DATA_8);
     rs232_set_parity(state.serial, RS232_PARITY_NONE);
     rs232_set_stop(state.serial, RS232_STOP_1);
@@ -51,31 +87,31 @@ static ERL_NIF_TERM close_0(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     return enif_make_atom(env, "ok");
 }
 
-static ERL_NIF_TERM read_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
-    int length, error;
+static ERL_NIF_TERM read_2(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
+    int length, error, timeout;
     unsigned int rlength;
     char *buffer;
     ERL_NIF_TERM term;
     
-    if (argc != 1 || !enif_is_number(env, argv[0])) {
+    if (argc != 2 || !enif_is_number(env, argv[0]) || !enif_is_number(env, argv[1])) {
         return enif_make_badarg(env);
     }
     if (!enif_get_int(env, argv[0], &length)) {
         return enif_make_badarg(env);
     }
+    if (!enif_get_int(env, argv[1], &timeout)) {
+    	return enif_make_badarg(env);
+    }
     buffer = enif_alloc(length);
+    memset(buffer, 0, length);
     if (state.serial == NULL || !rs232_port_open(state.serial)) {
         return enif_make_tuple2(env, enif_make_atom(env, "error"), enif_make_string(env, "serial port is closed", ERL_NIF_LATIN1));
     }
-    error = rs232_read(state.serial, (unsigned char *) buffer, length, &rlength);
-    if (error > RS232_ERR_NOERROR) {
-        enif_free(buffer);
-        return enif_make_tuple2(env, enif_make_atom(env, "error"), enif_make_int(env, error));
-    }
-    term = enif_make_string_len(env, buffer, length, ERL_NIF_LATIN1);
+    error = rs232_read_timeout(state.serial, (unsigned char *) buffer, length, &rlength, timeout);
+    term = enif_make_string_len(env, buffer, rlength, ERL_NIF_LATIN1);
     enif_free(buffer);
     
-    return term;
+    return enif_make_tuple2(env, enif_make_int(env, error), term);
 }
 
 static ERL_NIF_TERM write_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
@@ -102,9 +138,9 @@ static ERL_NIF_TERM write_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 }
 
 static ErlNifFunc rs232_NIFs[] = {
-    {"open", 1, &open_1},
+    {"open", 2, &open_2},
     {"close", 0, &close_0},
-    {"read", 1, &read_1},
+    {"read", 2, &read_2},
     {"write", 1, &write_1}
 };
 
