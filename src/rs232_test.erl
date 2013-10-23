@@ -4,6 +4,7 @@
 
 test(Device) ->
     rs232:open(Device),
+    rs232:write(<<244:8, 13:8, 1:8>>),
     rs232:write(<<145:8, 32:8, 0:8>>),
     timer:sleep(?SLEEP),
     rs232:write(<<145:8, 0:8, 0:8>>),

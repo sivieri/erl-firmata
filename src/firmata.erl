@@ -63,7 +63,7 @@ handle_call(Request, _From, State) ->
     io:format(standard_error, "Unknown CALL message ~p~n", [Request]),
     {reply, Reply, State}.
 
-handle_cast({pin, Pin, Mode}, State = #state{device = Device}) ->
+handle_cast({mode, Pin, Mode}, State = #state{device = Device}) ->
     Device ! {send, <<244:8/integer, Pin:8/integer, Mode:8/integer>>},
     {noreply, State};
 handle_cast({digital, write, Pin, Value}, State = #state{device = Device, output = Output}) ->

@@ -9,10 +9,12 @@
 
 pull_test(Device) ->
     firmata:start_link(Device),
+    firmata:pin_mode(?LED, output),
     pull_loop(high).
 
 push_test(Device) ->
     firmata:start_link(Device),
+    firmata:pin_mode(?LED, output),
     Pid = spawn(fun() -> push_loop_notifications() end),
     firmata:subscribe(Pid, analog, ?SENSOR),
     push_loop_led(high).
