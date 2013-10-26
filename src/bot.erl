@@ -5,7 +5,7 @@
 -define(PWM_RIGHT, 11).
 -define(DIR_LEFT, 12).
 -define(DIR_RIGHT, 13).
--define(SLEEP, 10).
+-define(SLEEP, 20).
 -define(STOP_SLEEP, 30).
 -define(TEST_SLEEP, 3000).
 -define(CHANGE_SLEEP, 500).
@@ -67,6 +67,7 @@ loop(State = #state{distance = PrevDistance}) ->
         Value when Value > ?THRESHOLD andalso PrevDistance =< ?THRESHOLD ->
             timer:sleep(?CHANGE_SLEEP),
             stop(rotate_left),
+            timer:sleep(?CHANGE_SLEEP),
             forward();
         Value when Value > ?THRESHOLD andalso PrevDistance > ?THRESHOLD ->
             % maintain course
@@ -76,6 +77,7 @@ loop(State = #state{distance = PrevDistance}) ->
             ok;
         Value when Value =< ?THRESHOLD andalso PrevDistance > ?THRESHOLD ->
             stop(forward),
+            timer:sleep(?CHANGE_SLEEP),
             rotate(left)
     end,
     timer:sleep(?SLEEP),
