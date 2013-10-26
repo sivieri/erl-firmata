@@ -1,5 +1,5 @@
 -module(bot).
--export([start/1, test/1]).
+-export([start/1, test/1, emergency_stop/1]).
 -define(PING, 7).
 -define(PWM_LEFT, 3).
 -define(PWM_RIGHT, 11).
@@ -8,6 +8,7 @@
 -define(SLEEP, 10).
 -define(STOP_SLEEP, 30).
 -define(TEST_SLEEP, 3000).
+-define(CHANGE_SLEEP, 500).
 -define(FWD_SPEED, 255).
 -define(BWD_SPEED, 200).
 -define(ROTATE_SPEED, 200).
@@ -46,6 +47,11 @@ test(Device) ->
     stop(rotate_right),
     firmata:stop().
 
+emergency_stop(Device) ->
+    setup(Device),
+    stop(forward),
+    firmata:stop().
+
 % Private API
 
 setup(Device) ->
@@ -59,6 +65,7 @@ loop(State = #state{distance = PrevDistance}) ->
     Distance = firmata:digital_read(?PING),
     case Distance of
         Value when Value > ?THRESHOLD andalso PrevDistance =< ?THRESHOLD ->
+            timer:sleep(?CHANGE_SLEEP),
             stop(rotate_left),
             forward();
         Value when Value > ?THRESHOLD andalso PrevDistance > ?THRESHOLD ->
