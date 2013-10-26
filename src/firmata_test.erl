@@ -2,7 +2,7 @@
 -export([pull_test/1, push_test/1, push_performance/1]).
 -define(SLEEP, 1000).
 -define(LED, 13).
--define(SENSOR, 0).
+-define(SENSOR, 7).
 -define(SAMPLING, 10000000).
 
 % Public API
@@ -21,7 +21,7 @@ push_test(Device) ->
 
 push_performance(Device) ->
     firmata:start_link(Device),
-    firmata:subscribe(self(), analog, ?SENSOR),
+    firmata:subscribe(self(), digital, ?SENSOR),
     {_, Secs, MicroSecs} = erlang:now(),
     push_loop_performance(0, Secs * 1000000 + MicroSecs).
 
@@ -33,7 +33,7 @@ pull_loop(Status) ->
         high -> low;
         low -> high
     end,
-    io:format("LED changed~n~p~n", [firmata:analog_read(?SENSOR)]),
+    io:format("LED changed~n~p~n", [firmata:digital_read(?SENSOR)]),
     timer:sleep(?SLEEP),
     pull_loop(NewStatus).
 

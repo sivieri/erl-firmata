@@ -42,7 +42,7 @@
 #define I2C_10BIT_ADDRESS_MODE_MASK B00100000
 
 #define MAX_QUERIES 8
-#define MINIMUM_SAMPLING_INTERVAL 10
+#define MINIMUM_SAMPLING_INTERVAL 50
 
 #define REGISTER_NOT_SPECIFIED -1
 
@@ -56,6 +56,7 @@ int analogInputsToReport = 0; // bitwise array to store pin reporting
 /* digital input ports */
 byte reportPINs[TOTAL_PORTS];       // 1 = report this port, 0 = silence
 byte previousPINs[TOTAL_PORTS];     // previous 8 bits sent
+long previousDistance;
 
 /* pins configuration */
 byte pinConfig[TOTAL_PINS];         // configuration of every pin
@@ -158,7 +159,15 @@ void outputPingPort(byte portNumber)
   pinMode(portNumber, INPUT);
   duration = pulseIn(portNumber, HIGH);
   distance = duration / 29 / 2;
-  Firmata.sendDigitalPort(portNumber, distance);
+  if (previousDistance != distance) {
+    Firmata.sendDigitalPort(portNumber, distance);
+    previousDistance = distance;
+  }
+}
+
+void checkPingSensor(void)
+{
+  outputPingPort(7);
 }
 
 /* -----------------------------------------------------------------------------
@@ -177,7 +186,6 @@ void checkDigitalInputs(void)
   if (TOTAL_PORTS > 5 && reportPINs[5]) outputPort(5, readPort(5, portConfigInputs[5]), false);
   if (TOTAL_PORTS > 6 && reportPINs[6]) outputPort(6, readPort(6, portConfigInputs[6]), false);
   //if (TOTAL_PORTS > 7 && reportPINs[7]) outputPort(7, readPort(7, portConfigInputs[7]), false);
-  outputPingPort(7);
   if (TOTAL_PORTS > 8 && reportPINs[8]) outputPort(8, readPort(8, portConfigInputs[8]), false);
   if (TOTAL_PORTS > 9 && reportPINs[9]) outputPort(9, readPort(9, portConfigInputs[9]), false);
   if (TOTAL_PORTS > 10 && reportPINs[10]) outputPort(10, readPort(10, portConfigInputs[10]), false);
@@ -639,6 +647,7 @@ void loop()
   currentMillis = millis();
   if (currentMillis - previousMillis > samplingInterval) {
     previousMillis += samplingInterval;
+    checkPingSensor();
     /* ANALOGREAD - do all analogReads() at the configured sampling interval */
     for(pin=0; pin<TOTAL_PINS; pin++) {
       if (IS_PIN_ANALOG(pin) && pinConfig[pin] == ANALOG) {

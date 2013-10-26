@@ -87,6 +87,30 @@ static ERL_NIF_TERM close_0(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
     return enif_make_atom(env, "ok");
 }
 
+static ERL_NIF_TERM flush_0(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
+    if (state.serial != NULL && rs232_port_open(state.serial)) {
+        rs232_flush(state.serial);
+    }
+
+    return enif_make_atom(env, "ok");
+}
+
+static ERL_NIF_TERM iflush_0(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
+    if (state.serial != NULL && rs232_port_open(state.serial)) {
+        rs232_iflush(state.serial);
+    }
+
+    return enif_make_atom(env, "ok");
+}
+
+static ERL_NIF_TERM oflush_0(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
+    if (state.serial != NULL && rs232_port_open(state.serial)) {
+        rs232_oflush(state.serial);
+    }
+
+    return enif_make_atom(env, "ok");
+}
+
 static ERL_NIF_TERM read_2(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
     int length, error, timeout;
     unsigned int rlength;
@@ -140,6 +164,9 @@ static ERL_NIF_TERM write_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 static ErlNifFunc rs232_NIFs[] = {
     {"open", 2, &open_2},
     {"close", 0, &close_0},
+    {"flush", 0, &flush_0},
+    {"iflush", 0, &iflush_0},
+    {"oflush", 0, &oflush_0},
     {"read", 2, &read_2},
     {"write", 1, &write_1}
 };

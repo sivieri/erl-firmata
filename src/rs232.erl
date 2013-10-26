@@ -1,5 +1,5 @@
 -module(rs232).
--export([init/0, open/2, close/0, read/2, write/1]).
+-export([init/0, open/2, close/0, flush/0, iflush/0, oflush/0, read/2, write/1]).
 -on_load(init/0).
 
 -define(APPNAME, firmata).
@@ -17,6 +17,15 @@ open(_Device, _Speed) ->
     erlang:nif_error(nif_not_loaded).
 
 close() ->
+    erlang:nif_error(nif_not_loaded).
+
+flush() ->
+    erlang:nif_error(nif_not_loaded).
+
+iflush() ->
+    erlang:nif_error(nif_not_loaded).
+
+oflush() ->
     erlang:nif_error(nif_not_loaded).
 
 read(_Length, _Timeout) ->

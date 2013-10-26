@@ -3,7 +3,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 -export([start_link/1, digital_read/1, analog_read/1, pin_mode/2, digital_write/2, analog_write/2, subscribe/3, unsubscribe/3]).
 -define(SPEED, 57600).
--define(ACC, 100).
+-define(ACC, 20).
 -define(READ_LENGTH, 1).
 -define(READ_TIMEOUT, 10).
 -type dict(Key, Val) :: [{Key, Val}].
@@ -126,6 +126,9 @@ code_change(_OldVsn, State, _Extra) ->
 % Private API
 
 read_loop(Bytes) when byte_size(Bytes) < ?ACC ->
+    % We need to sleep a little bit, otherwhise the VM cannot
+    % switch task (on single core devices)!
+    timer:sleep(?READ_TIMEOUT),
     case rs232:read(?READ_LENGTH, ?READ_TIMEOUT) of
         % Everything is fine
         {Error, [Byte]} when Error == 0 ->
@@ -139,9 +142,7 @@ read_loop(Bytes) when byte_size(Bytes) < ?ACC ->
     end;
 read_loop(Bytes) ->
     ?MODULE ! {data, Bytes},
-    % We need to sleep a little bit, otherwhise the VM cannot
-    % switch task (on single core devices)!
-    timer:sleep(?READ_TIMEOUT),
+    rs232:iflush(),
     read_loop(<<>>).
 
 filter_msg(<<>>, Analog, Digital) ->

@@ -1,0 +1,60 @@
+diff --git a/include/librs232/rs232.h b/include/librs232/rs232.h
+index 4f413f0..f36de77 100644
+--- a/include/librs232/rs232.h
++++ b/include/librs232/rs232.h
+@@ -179,6 +179,8 @@ RS232_LIB unsigned int rs232_open(struct rs232_port_t *p);
+ RS232_LIB unsigned int rs232_port_open(struct rs232_port_t *p);
+ RS232_LIB unsigned int rs232_close(struct rs232_port_t *p);
+ RS232_LIB unsigned int rs232_flush(struct rs232_port_t *p);
++RS232_LIB unsigned int rs232_iflush(struct rs232_port_t *p);
++RS232_LIB unsigned int rs232_oflush(struct rs232_port_t *p);
+ RS232_LIB void rs232_set_device(struct rs232_port_t *p, char *device);
+ RS232_LIB unsigned int rs232_set_baud(struct rs232_port_t *p, unsigned int baud);
+ RS232_LIB unsigned int rs232_set_stop(struct rs232_port_t *p, unsigned int stop);
+diff --git a/src/rs232_posix.c b/src/rs232_posix.c
+index 226ebb1..6b6e975 100644
+--- a/src/rs232_posix.c
++++ b/src/rs232_posix.c
+@@ -788,6 +788,42 @@ rs232_flush(struct rs232_port_t *p)
+ }
+ 
+ unsigned int
++rs232_iflush(struct rs232_port_t *p)
++{
++    int ret;
++    struct rs232_posix_t *ux = p->pt;
++
++    DBG("p=%p p->pt=%p\n", (void *)p, p->pt);
++
++    if (!rs232_port_open(p))
++        return RS232_ERR_PORT_CLOSED;
++
++    ret = tcflush(ux->fd, TCIFLUSH);
++    if (ret == -1)
++        return RS232_ERR_FLUSH;
++
++    return RS232_ERR_NOERROR;
++}
++
++unsigned int
++rs232_oflush(struct rs232_port_t *p)
++{
++    int ret;
++    struct rs232_posix_t *ux = p->pt;
++
++    DBG("p=%p p->pt=%p\n", (void *)p, p->pt);
++
++    if (!rs232_port_open(p))
++        return RS232_ERR_PORT_CLOSED;
++
++    ret = tcflush(ux->fd, TCOFLUSH);
++    if (ret == -1)
++        return RS232_ERR_FLUSH;
++
++    return RS232_ERR_NOERROR;
++}
++
++unsigned int
+ rs232_close(struct rs232_port_t *p)
+ {
+ 	int ret;
