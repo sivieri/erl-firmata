@@ -1,7 +1,7 @@
 -module(firmata).
 -behaviour(gen_server).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
--export([start_link/1, digital_read/1, analog_read/1, pin_mode/2, digital_write/2, analog_write/2, subscribe/3, unsubscribe/3]).
+-export([start_link/1, stop/0, digital_read/1, analog_read/1, pin_mode/2, digital_write/2, analog_write/2, subscribe/3, unsubscribe/3]).
 -define(SPEED, 57600).
 -define(ACC, 20).
 -define(READ_LENGTH, 1).
@@ -18,6 +18,9 @@
 start_link(Device) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [Device], []).
 
+stop() ->
+    gen_server:call(?MODULE, stop).
+
 digital_read(Pin) ->
     gen_server:call(?MODULE, {digital, read, Pin}).
 
@@ -27,7 +30,11 @@ analog_read(Pin) ->
 pin_mode(Pin, input) ->
     gen_server:cast(?MODULE, {mode, Pin, 0});
 pin_mode(Pin, output) ->
-    gen_server:cast(?MODULE, {mode, Pin, 1}).
+    gen_server:cast(?MODULE, {mode, Pin, 1});
+pin_mode(Pin, analog) ->
+    gen_server:cast(?MODULE, {mode, Pin, 2});
+pin_mode(Pin, pwm) ->
+    gen_server:cast(?MODULE, {mode, Pin, 3}).
 
 digital_write(Pin, low) ->
     gen_server:cast(?MODULE, {digital, write, Pin, 0});
@@ -61,6 +68,8 @@ handle_call({digital, read, Pin}, _From, State = #state{digital = Digital}) ->
 handle_call({analog, read, Pin}, _From, State = #state{analog = Analog}) ->
     {Reply, _} = dict:fetch(Pin, Analog),
     {reply, Reply, State};
+handle_call(stop, _From, State) ->
+    {stop, normal, ok, State};
 handle_call(Request, _From, State) ->
     Reply = error,
     io:format(standard_error, "Unknown CALL message ~p~n", [Request]),
@@ -118,6 +127,7 @@ handle_info(Info, State) ->
     {noreply, State}.
 
 terminate(_Reason, _State) ->
+    rs232:close(),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -137,8 +147,8 @@ read_loop(Bytes) when byte_size(Bytes) < ?ACC ->
         {Error, _} when Error == 9 ->
             read_loop(Bytes);
         % Worry
-        {Error, _} ->
-            io:format(standard_error, "Error while reading: ~w~n", [Error])
+        {Error, Other} ->
+            io:format(standard_error, "Error while reading: ~w ~p~n", [Error, Other])
     end;
 read_loop(Bytes) ->
     ?MODULE ! {data, Bytes},

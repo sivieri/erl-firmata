@@ -65,5 +65,6 @@ push_loop_performance(Counter, Initial) ->
             end;
         true ->
             Time = Secs * 1000000 + MicroSecs - Initial,
-            io:format("Received ~p messages in ~p microsecs: ~p msg per sec~n", [Counter, Time, Counter / (Time / 1000000)])
+            io:format("Received ~p messages in ~p microsecs: ~p msg per sec~n", [Counter, Time, Counter / (Time / 1000000)]),
+            firmata:stop()
     end.

@@ -8,11 +8,11 @@
 -define(SLEEP, 10).
 -define(STOP_SLEEP, 30).
 -define(TEST_SLEEP, 3000).
--define(FWD_SPEED, 200).
--define(BWD_SPEED, 150).
--define(ROTATE_SPEED, 100).
--define(TURN_SLOW, 100).
--define(TURN_FAST, 200).
+-define(FWD_SPEED, 255).
+-define(BWD_SPEED, 200).
+-define(ROTATE_SPEED, 200).
+-define(TURN_SLOW, 200).
+-define(TURN_FAST, 255).
 % In centimeters
 -define(THRESHOLD, 20).
 -record(state, {distance = 0}).
@@ -39,16 +39,19 @@ test(Device) ->
     timer:sleep(?TEST_SLEEP),
     rotate(left),
     timer:sleep(?TEST_SLEEP),
+    stop(rotate_left),
+    timer:sleep(?TEST_SLEEP),
     rotate(right),
     timer:sleep(?TEST_SLEEP),
-    stop(rotate_right).
+    stop(rotate_right),
+    firmata:stop().
 
 % Private API
 
 setup(Device) ->
     firmata:start_link(Device),
-    firmata:pin_mode(?PWM_LEFT, output),
-    firmata:pin_mode(?PWM_RIGHT, output),
+    firmata:pin_mode(?PWM_LEFT, pwm),
+    firmata:pin_mode(?PWM_RIGHT, pwm),
     firmata:pin_mode(?DIR_LEFT, output),
     firmata:pin_mode(?DIR_RIGHT, output).
 
@@ -72,14 +75,14 @@ loop(State = #state{distance = PrevDistance}) ->
     loop(State#state{distance = Distance}).
 
 forward() ->
-    firmata:digital_write(?DIR_LEFT, low),
-    firmata:digital_write(?DIR_RIGHT, low),
+    firmata:digital_write(?DIR_LEFT, high),
+    firmata:digital_write(?DIR_RIGHT, high),
     firmata:analog_write(?PWM_LEFT, ?FWD_SPEED),
     firmata:analog_write(?PWM_RIGHT, ?FWD_SPEED).
 
 backward() ->
-    firmata:digital_write(?DIR_LEFT, high),
-    firmata:digital_write(?DIR_RIGHT, high),
+    firmata:digital_write(?DIR_LEFT, low),
+    firmata:digital_write(?DIR_RIGHT, low),
     firmata:analog_write(?PWM_LEFT, ?BWD_SPEED),
     firmata:analog_write(?PWM_RIGHT, ?BWD_SPEED).
 
@@ -91,14 +94,6 @@ turn(right) ->
     firmata:analog_write(?PWM_RIGHT, ?TURN_SLOW).
 
 stop(forward) ->
-    firmata:digital_write(?DIR_LEFT, high),
-    firmata:digital_write(?DIR_RIGHT, high),
-    timer:sleep(?STOP_SLEEP),
-    firmata:analog_write(?PWM_LEFT, 0),
-    firmata:analog_write(?PWM_RIGHT, 0),
-    firmata:digital_write(?DIR_LEFT, low),
-    firmata:digital_write(?DIR_RIGHT, low);
-stop(backward) ->
     firmata:digital_write(?DIR_LEFT, low),
     firmata:digital_write(?DIR_RIGHT, low),
     timer:sleep(?STOP_SLEEP),
@@ -106,30 +101,38 @@ stop(backward) ->
     firmata:analog_write(?PWM_RIGHT, 0),
     firmata:digital_write(?DIR_LEFT, high),
     firmata:digital_write(?DIR_RIGHT, high);
+stop(backward) ->
+    firmata:digital_write(?DIR_LEFT, high),
+    firmata:digital_write(?DIR_RIGHT, high),
+    timer:sleep(?STOP_SLEEP),
+    firmata:analog_write(?PWM_LEFT, 0),
+    firmata:analog_write(?PWM_RIGHT, 0),
+    firmata:digital_write(?DIR_LEFT, low),
+    firmata:digital_write(?DIR_RIGHT, low);
 stop(rotate_left) ->
+    firmata:digital_write(?DIR_LEFT, high),
+    firmata:digital_write(?DIR_RIGHT, low),
+    timer:sleep(?STOP_SLEEP),
+    firmata:analog_write(?PWM_LEFT, 0),
+    firmata:analog_write(?PWM_RIGHT, 0),
+    firmata:digital_write(?DIR_LEFT, low),
+    firmata:digital_write(?DIR_RIGHT, high);
+stop(rotate_right) ->
     firmata:digital_write(?DIR_LEFT, low),
     firmata:digital_write(?DIR_RIGHT, high),
     timer:sleep(?STOP_SLEEP),
     firmata:analog_write(?PWM_LEFT, 0),
     firmata:analog_write(?PWM_RIGHT, 0),
     firmata:digital_write(?DIR_LEFT, high),
-    firmata:digital_write(?DIR_RIGHT, low);
-stop(rotate_right) ->
-    firmata:digital_write(?DIR_LEFT, high),
-    firmata:digital_write(?DIR_RIGHT, low),
-    timer:sleep(?STOP_SLEEP),
-    firmata:analog_write(?PWM_LEFT, 0),
-    firmata:analog_write(?PWM_RIGHT, 0),
-    firmata:digital_write(?DIR_LEFT, low),
-    firmata:digital_write(?DIR_RIGHT, high).
+    firmata:digital_write(?DIR_RIGHT, low).
 
 rotate(left) ->
-    firmata:digital_write(?DIR_LEFT, high),
-    firmata:digital_write(?DIR_RIGHT, low),
+    firmata:digital_write(?DIR_LEFT, low),
+    firmata:digital_write(?DIR_RIGHT, high),
     firmata:analog_write(?PWM_LEFT, ?ROTATE_SPEED),
     firmata:analog_write(?PWM_RIGHT, ?ROTATE_SPEED);
 rotate(right) ->
-    firmata:digital_write(?DIR_LEFT, low),
-    firmata:digital_write(?DIR_RIGHT, high),
+    firmata:digital_write(?DIR_LEFT, high),
+    firmata:digital_write(?DIR_RIGHT, low),
     firmata:analog_write(?PWM_LEFT, ?ROTATE_SPEED),
     firmata:analog_write(?PWM_RIGHT, ?ROTATE_SPEED).
