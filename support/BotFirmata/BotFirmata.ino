@@ -609,6 +609,15 @@ void systemResetCallback()
 
 void setup() 
 {
+  Serial1.begin(57600);
+  
+  do {
+    while (Serial1.available() > 0) {
+      Serial1.read();
+    }
+    delay(1000);
+  } while (Serial1.available() > 0);
+  
   Firmata.setFirmwareVersion(FIRMATA_MAJOR_VERSION, FIRMATA_MINOR_VERSION);
 
   Firmata.attach(ANALOG_MESSAGE, analogWriteCallback);
@@ -619,7 +628,6 @@ void setup()
   Firmata.attach(START_SYSEX, sysexCallback);
   Firmata.attach(SYSTEM_RESET, systemResetCallback);
 
-  Serial1.begin(57600);
   Firmata.begin(Serial1);
   systemResetCallback();  // reset to default config
 }
