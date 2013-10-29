@@ -3,7 +3,6 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 -export([start_link/1, stop/0, digital_read/1, analog_read/1, pin_mode/2, digital_write/2, analog_write/2, subscribe/3, unsubscribe/3]).
 -define(SPEED, 57600).
--define(ACC, 20).
 -define(READ_LENGTH, 1).
 -define(READ_TIMEOUT, 10).
 -type dict(Key, Val) :: [{Key, Val}].
@@ -59,7 +58,7 @@ init([Device]) ->
     Analog = lists:foldl(fun(I, AccIn) -> dict:store(I, {0, sets:new()}, AccIn) end, dict:new(), lists:seq(0, 15)),
     Digital = lists:foldl(fun(I, AccIn) -> dict:store(I, {0, sets:new()}, AccIn) end, dict:new(), lists:seq(0, 15)),
     Output = lists:foldl(fun(I, AccIn) -> dict:store(I, 0, AccIn) end, dict:new(), lists:seq(0, 15)),
-    spawn_link(fun() -> read_loop(<<>>) end),
+    spawn_link(fun() -> read_loop(0, 0, 0, 0, 0) end),
     {ok, #state{analog = Analog, digital = Digital, output = Output}}.
 
 handle_call({digital, read, Pin}, _From, State = #state{digital = Digital}) ->
@@ -75,6 +74,16 @@ handle_call(Request, _From, State) ->
     io:format(standard_error, "Unknown CALL message ~p~n", [Request]),
     {reply, Reply, State}.
 
+handle_cast({update, analog, Pin, Value}, State = #state{analog = Analog}) ->
+    {_, Subscribers} = dict:fetch(Pin, Analog),
+    spawn(fun() -> notify(Pin, Value, Subscribers) end),
+    NewAnalog = dict:store(Pin, {Value, Subscribers}, Analog),
+    {noreply, State#state{analog = NewAnalog}};
+handle_cast({update, digital, Pin, Value}, State = #state{digital = Digital}) ->
+    {_, Subscribers} = dict:fetch(Pin, Digital),
+    spawn(fun() -> notify(Pin, Value, Subscribers) end),
+    NewDigital = dict:store(Pin, {Value, Subscribers}, Digital),
+    {noreply, State#state{digital = NewDigital}};
 handle_cast({mode, Pin, Mode}, State) ->
     rs232:write(<<244:8/integer, Pin:8/integer, Mode:8/integer>>),
     {noreply, State};
@@ -117,11 +126,6 @@ handle_cast(Msg, State) ->
     io:format(standard_error, "Unknown CAST message ~p~n", [Msg]),
     {noreply, State}.
 
-handle_info({data, NewBytes}, State = #state{analog = Analog, digital = Digital, bytes = Bytes}) when byte_size(NewBytes) + byte_size(Bytes)  >= 3 ->
-    {NewAnalog, NewDigital} = filter_msg(<<Bytes/binary, NewBytes/binary>>, Analog, Digital),
-    {noreply, State#state{analog = NewAnalog, digital = NewDigital, bytes = <<>>}};
-handle_info({data, NewBytes}, State) ->
-    {noreply, State#state{bytes = NewBytes}};
 handle_info(Info, State) ->
     io:format(standard_error, "Unknown INFO message ~p~n", [Info]),
     {noreply, State}.
@@ -135,40 +139,39 @@ code_change(_OldVsn, State, _Extra) ->
 
 % Private API
 
-read_loop(Bytes) when byte_size(Bytes) < ?ACC ->
-    % We need to sleep a little bit, otherwhise the VM cannot
-    % switch task (on single core devices)!
+read_loop(WaitForData, ExecuteMultiByteCommand, MultiByteChannel, Lsb, Msb) ->
     timer:sleep(?READ_TIMEOUT),
     case rs232:read(?READ_LENGTH, ?READ_TIMEOUT) of
         % Everything is fine
         {Error, [Byte]} when Error == 0 ->
-            read_loop(<<Bytes/binary, Byte:8>>);
+            {NewWaitForData, NewExecuteMultiByteCommand, NewMultiByteChannel, NewLsb, NewMsb} = parse_byte(Byte, WaitForData, ExecuteMultiByteCommand, MultiByteChannel, Lsb, Msb),
+            read_loop(NewWaitForData, NewExecuteMultiByteCommand, NewMultiByteChannel, NewLsb, NewMsb);
          % Timeout: we shouldn't worry too much
         {Error, _} when Error == 9 ->
-            read_loop(Bytes);
+            read_loop(WaitForData, ExecuteMultiByteCommand, MultiByteChannel, Lsb, Msb);
         % Worry
         {Error, Other} ->
             io:format(standard_error, "Error while reading: ~w ~p~n", [Error, Other])
-    end;
-read_loop(Bytes) ->
-    ?MODULE ! {data, Bytes},
-    rs232:iflush(),
-    read_loop(<<>>).
+    end.
 
-filter_msg(<<>>, Analog, Digital) ->
-    {Analog, Digital};
-filter_msg(<<9:4, Ch:4, Lsb:8, Msb:8, Rest/binary>>, Analog, Digital) ->
-    filter_msg(Rest, Analog, parse_msg(Ch, Lsb, Msb, Digital));
-filter_msg(<<14:4, Ch:4, Lsb:8, Msb:8, Rest/binary>>, Analog, Digital) ->
-    filter_msg(Rest, parse_msg(Ch, Lsb, Msb, Analog), Digital);
-filter_msg(<<_:8, Rest/binary>>, Analog, Digital) ->
-    filter_msg(Rest, Analog, Digital).
-
-parse_msg(Ch, Lsb, Msb, Dict) ->
-    {_, Subscribers} = dict:fetch(Ch, Dict),
-    Value = (Msb bsl 7) + Lsb,
-    spawn(fun() -> notify(Ch, Value, Subscribers) end),
-    dict:store(Ch, {Value, Subscribers}, Dict).
+parse_byte(_Byte, WaitForData, ExecuteMultiByteCommand, MultiByteChannel, Lsb, Msb) when WaitForData == 0 andalso byte < 128 andalso ExecuteMultiByteCommand == 144 ->
+    gen_server:cast(?MODULE, {update, digital, MultiByteChannel, (Msb bsl 7) + Lsb}),
+    {0, 0, 0, 0, 0};
+parse_byte(_Byte, WaitForData, ExecuteMultiByteCommand, MultiByteChannel, Lsb, Msb) when WaitForData == 0 andalso byte < 128 andalso ExecuteMultiByteCommand == 224 ->
+    gen_server:cast(?MODULE, {update, analog, MultiByteChannel, (Msb bsl 7) + Lsb}),
+    {0, 0, 0, 0, 0};
+parse_byte(Byte, WaitForData, ExecuteMultiByteCommand, MultiByteChannel, Lsb, _Msb) when WaitForData == 1 andalso byte < 128 ->
+    parse_byte(Byte, 0, ExecuteMultiByteCommand, MultiByteChannel, Lsb, Byte);
+parse_byte(Byte, WaitForData, ExecuteMultiByteCommand, MultiByteChannel, _Lsb, _Msb) when WaitForData == 2 andalso byte < 128 ->
+    {1, ExecuteMultiByteCommand, MultiByteChannel, Byte, 0};
+parse_byte(Byte, _WaitForData, _ExecuteMultiByteCommand, _MultiByteChannel, _Lsb, _Msb) ->
+    {Command, NewMultiByteChannel} = case Byte of
+        Byte when Byte < 240 ->
+            {Byte band 240, Byte band 15};
+        _ ->
+            {Byte, 0}
+    end,
+    {2, Command, NewMultiByteChannel, 0, 0}.
 
 notify(Pin, Value, Subscribers) ->
     sets_foreach(fun(Sub) -> Sub ! {update, Pin, Value} end, Subscribers).
